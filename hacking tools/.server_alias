@@ -1,0 +1,57 @@
+recon_do()
+{
+    cat * >> output.txt
+    for i in $(cat output.txt)
+    do
+        subfinder -d $i -all -silent '='
+        findomain -t $i -q
+    done | tee -a subdomains.txt
+    echo "subdomain enumeration done" | notify -silent
+    httpx -l subdomains.txt -sc -title -td -t 200 -location -cl -ct -ip -nc -o httpx.txt
+    echo "httpx done" | notify -silent
+    cat httpx.txt | awk -F\[ '{print $7}' | tr -d '[]' | sort -u | tee -a ip_addresses.txt
+    sudo masscan -p1-65535 -iL ip_addresses.txt --rate=2000 --open -oG masscan.txt 
+    cat masscan.txt | grep -a 'Host:' | awk '{print $2 ":" $5}' | cut -d '/' -f1 >>masscan_sub.txt
+    echo "masscan done" | notify -silent
+    cat httpx.txt | awk '{print $1}' | sort -u | tee -a url.txt
+    mkdir nuclei
+    nuclei -list url.txt -o nuclei/nuclei_output.txt
+    awk '/\[info\]/' nuclei_output.txt > nuclei/info.txt
+    awk '/\[low\]/' nuclei_output.txt > nuclei/low.txt
+    awk '/\[medium\]/' nuclei_output.txt > nuclei/medium.txt
+    awk '/\[high\]/' nuclei_output.txt > nuclei/high.txt
+    awk '/\[critical\]/' nuclei_output.txt > nuclei/critical.txt
+    echo "nuclei done" | notify -silent
+    #for i in $(cat url.txt);do echo $i | waybackurls;done > urls
+    mkdir fuzz
+    xargs -P `nproc` -I {} sh -c 'url="{}"; ffuf -mc all -H "X-Forwarded-For: 127.0.0.1" -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:72.0) Gecko/20100101 Firefox/72.0" -u "{}/FUZZ" -w ~/wordlist/secret-files -t 200 -ac -se -o fuzz/${url##*/}-${url%%:*}.json' < url.txt
+    cat fuzz/* | jq '[.results[]|{status: .status, length: .length, url: .url}]' | grep -oP "status\":\s(\d{3})|length\":\s(\d{1,7})|url\":\s\"(http[s]?:\/\/.*?)\"" | paste -d' ' - - - | awk '{print $2" "$4" "$6}' | sed 's/\"//g' > ffuf_result.txt
+    echo "fuzzing done" | notify -silent
+}
+test()
+{
+    cat masscan.txt | grep -a 'Host:' | awk '{print $2 ":" $5}' | cut -d '/' -f1 >>masscan_sub.txt
+    echo "masscan done" | notify -silent
+    cat httpx.txt | awk '{print $1}' | sort -u | tee -a url.txt
+    mkdir nuclei
+    nuclei -list url.txt -o nuclei/nuclei_output.txt
+    awk '/\[info\]/' nuclei/nuclei_output.txt > nuclei/info.txt
+    awk '/\[low\]/' nuclei/nuclei_output.txt > nuclei/low.txt
+    awk '/\[medium\]/' nuclei/nuclei_output.txt > nuclei/medium.txt
+    awk '/\[high\]/' nuclei/nuclei_output.txt > nuclei/high.txt
+    awk '/\[critical\]/' nuclei/nuclei_output.txt > nuclei/critical.txt
+    echo "nuclei done" | notify -silent
+    #for i in $(cat url.txt);do echo $i | waybackurls;done > urls
+    mkdir fuzz
+    xargs -P `nproc` -I {} sh -c 'url="{}"; ffuf -mc all -H "X-Forwarded-For: 127.0.0.1" -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:72.0) Gecko/20100101 Firefox/72.0" -u "{}/FUZZ" -w ~/wordlist/secret-files -t 200 -ac -se -o fuzz/${url##*/}-${url%%:*}.json' < url.txt
+    cat fuzz/* | jq '[.results[]|{status: .status, length: .length, url: .url}]' | grep -oP "status\":\s(\d{3})|length\":\s(\d{1,7})|url\":\s\"(http[s]?:\/\/.*?)\"" | paste -d' ' - - - | awk '{print $2" "$4" "$6}' | sed 's/\"//g' > ffuf_result.txt
+    echo "fuzzing done" | notify -silent
+}
+src()
+{
+        source ~/.server_alias
+}
+alias()
+{
+        vi ~/.server_alias
+}
